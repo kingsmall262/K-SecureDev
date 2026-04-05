@@ -1,39 +1,41 @@
 # K-SecureDev
 스미싱 탐지부터 코드 패치까지, 한국형 통합 보안 비서
-> **K-스미싱 탐지 및 코드 취약점 자동 패치 플랫폼** ## 💡 프로젝트 개요 (제안 배경)
-* [cite_start]기존 앱은 개인 사용자 보호에 특화되어 있어, 기업이나 개발자를 타겟으로 한 지능형 공격 대응에는 한계가 있음. [cite: 3]
-* [cite_start]글로벌 보안 툴은 국내 특유의 사회공학적 기법(부고, 결혼, 사내 공지 사칭 등)에 포함된 미묘한 뉘앙스를 포착하지 못해 탐지율이 저조함. [cite: 4]
-* [cite_start]취약점 탐지 후 개발자가 수동으로 코드를 수정하는 과정에서 사람에 의한 2차 취약점이 발생하는 구조적 문제가 반복됨. [cite: 5]
+> **K-스미싱 탐지 및 코드 취약점 자동 패치 플랫폼**
+
+## 💡 프로젝트 개요 (제안 배경)
+* 기존 앱은 개인 사용자 보호에 특화되어 있어, 기업이나 개발자를 타겟으로 한 지능형 공격 대응에는 한계가 있음.
+* 글로벌 보안 툴은 국내 특유의 사회공학적 기법(부고, 결혼, 사내 공지 사칭 등)에 포함된 미묘한 뉘앙스를 포착하지 못해 탐지율이 저조함.
+* 취약점 탐지 후 개발자가 수동으로 코드를 수정하는 과정에서 사람에 의한 2차 취약점이 발생하는 구조적 문제가 반복됨.
 
 ---
 
 ## ✨ 제공 기능 (제안 내용)
-* [cite_start]**한국어 특화 스미싱 탐지 (KoBERT):** 조사의 미묘한 차이까지 읽어내는 한국어 전용 모델을 통해, 단순한 정보 전달과 악성 유도 목적의 메시지를 정밀하게 판독함. [cite: 6]
-* [cite_start]**소스코드 취약점 정밀 진단 (Joern):** 외부 위협이 노릴 수 있는 코드 내 빈틈을 정적 분석 기술(CPG)로 전수 조사하여, 실제로 공격 가능한 취약 지점을 식별함. [cite: 7]
-* [cite_start]**인공지능 기반 보안 패치 생성 (Gemini Pro):** 발견된 취약점에 대해 프로젝트의 전체 구조를 이해하는 인공지능을 활용, 기존 로직을 깨뜨리지 않는 안전한 코드를 제안함. [cite: 8]
+* **한국어 특화 스미싱 탐지 (KoBERT):** 조사의 미묘한 차이까지 읽어내는 한국어 전용 모델을 통해, 단순한 정보 전달과 악성 유도 목적의 메시지를 정밀하게 판독함.
+* **소스코드 취약점 정밀 진단 (Joern):** 외부 위협이 노릴 수 있는 코드 내 빈틈을 정적 분석 기술(CPG)로 전수 조사하여, 실제로 공격 가능한 취약 지점을 식별함.
+* **인공지능 기반 보안 패치 생성 (Gemini Pro):** 발견된 취약점에 대해 프로젝트의 전체 구조를 이해하는 인공지능을 활용, 기존 로직을 깨뜨리지 않는 안전한 코드를 제안함.
 
 ---
 
 ## 🏗️ 시스템 구조 (Architecture)
-[cite_start]FastAPI, KOBERT, Joern을 Docker로 컨테이너화 하여 환경에 구애받지 않는 배포와 확장성을 확보함. [cite: 19]
+FastAPI, KOBERT, Joern을 Docker로 컨테이너화 하여 환경에 구애받지 않는 배포와 확장성을 확보함.
 
-* [cite_start]**User Layer:** Streamlit UI Dashboard [cite: 19]
-* [cite_start]**Docker Infrastructure (Core):** FastAPI Gateway, KoBERT Engine (한국어 문맥 분석), Joern Server (CPG 정적 분석), Analysis History DB (SQLite/PostgreSQL) [cite: 19]
-* [cite_start]**External Cloud Services:** PhishTank API (URL 블랙리스트), Gemini Pro 1M API (AI Safe-Patch 생성) [cite: 19]
+* **User Layer:** Streamlit UI Dashboard
+* **Docker Infrastructure (Core):** FastAPI Gateway, KoBERT Engine (한국어 문맥 분석), Joern Server (CPG 정적 분석), Analysis History DB (SQLite/PostgreSQL)
+* **External Cloud Services:** PhishTank API (URL 블랙리스트), Gemini Pro 1M API (AI Safe-Patch 생성)
 
 ---
 
 ## 📊 성공 여부 판단 기준
-* [cite_start]**제3자 도구 교차 검증:** Safe-Clone이 적용된 코드를 글로벌 상용 SAST 도구인 Snyk 및 SonarQube에 투입하여 잔존 취약점 수치 측정 (목표 수치: Critical 위협 0건) [cite: 47]
-* [cite_start]**글로벌 표준 벤치마크 활용:** NIST 산하 SARD에서 제공하는 Juliet Test Suite v1.3의 취약점 샘플을 대상으로 패치 성공률 측정 (목표 수치: CWE 대응률 90%↑) [cite: 47, 48]
-* [cite_start]**코드 구조 및 논리 무결성 평가:** Microsoft Research의 CodeBLEU 지표를 사용하여 구문(Syntax) 및 데이터 흐름(Data Flow)의 일치도 점수 산출 (목표 수치: 종합 점수 0.85↑) [cite: 48, 49]
+* **제3자 도구 교차 검증:** Safe-Clone이 적용된 코드를 글로벌 상용 SAST 도구인 Snyk 및 SonarQube에 투입하여 잔존 취약점 수치 측정 (목표 수치: Critical 위협 0건)
+* **글로벌 표준 벤치마크 활용:** NIST 산하 SARD에서 제공하는 Juliet Test Suite v1.3의 취약점 샘플을 대상으로 패치 성공률 측정 (목표 수치: CWE 대응률 90%↑)
+* **코드 구조 및 논리 무결성 평가:** Microsoft Research의 CodeBLEU 지표를 사용하여 구문(Syntax) 및 데이터 흐름(Data Flow)의 일치도 점수 산출 (목표 수치: 종합 점수 0.85↑)
 
 ---
 
 ## 📅 개발 일정
-* [cite_start]**4월:** 핵심 엔진 개발 및 데이터학습 (한국어 스미싱 데이터셋 튜닝, Joern 기반 분석 및 쿼리 설계) [cite: 39]
-* [cite_start]**5월:** 시스템 통합 및 AI 고도화 (Gemini API 연동 및 패치 검증, 통합 대시보드 구축) [cite: 39]
-* [cite_start]**6월:** 최종 테스트 및 결과보고 [cite: 39]
+* **4월:** 핵심 엔진 개발 및 데이터학습 (한국어 스미싱 데이터셋 튜닝, Joern 기반 분석 및 쿼리 설계)
+* **5월:** 시스템 통합 및 AI 고도화 (Gemini API 연동 및 패치 검증, 통합 대시보드 구축)
+* **6월:** 최종 테스트 및 결과보고
 
 ---
 
