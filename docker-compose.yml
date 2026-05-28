@@ -1,0 +1,15 @@
+version: '3.8'
+
+services:
+  k-securedev-platform:
+    build: .
+    container_name: k_securedev_container
+    ports:
+      - "8000:8000"
+      - "8501:8501"
+    environment:
+      - GEMINI_API_KEY=YOUR_API_KEY_HERE
+    volumes:
+      - ./app:/workspace/app
+      - ./dashboard:/workspace/dashboard
+    restart: always
