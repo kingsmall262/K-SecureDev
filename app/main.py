@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field
 from typing import List
 from app.engines.smishing_engine import analyze_smishing
 from app.engines.code_engine import analyze_code_clone
+from app.engines.history_db import add_history, get_history, delete_history, clear_all_history
 
 app = FastAPI(
     title="K-SecureDev Core Gateway",
@@ -55,6 +56,38 @@ def endpoint_smishing(payload: SmishingRequest):
 @app.post("/api/v1/code-analysis", response_model=CodeAnalysisResponse)
 def endpoint_code(payload: CodeAnalysisRequest):
     try:
-        return analyze_code_clone(payload.filename, payload.source_code)
+        result = analyze_code_clone(payload.filename, payload.source_code)
+        # 스캔 이력을 DB에 기록
+        add_history(
+            filename=result["filename"],
+            cwe=result["matched_cve"],
+            risk_score=result["risk_score"],
+            vulnerable=result["vulnerable_clone_found"],
+            details=result["vulnerability_details"]
+        )
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/v1/history")
+def endpoint_get_history():
+    try:
+        return get_history()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/api/v1/history/{record_id}")
+def endpoint_delete_history(record_id: int):
+    try:
+        delete_history(record_id)
+        return {"status": "success", "message": f"Record {record_id} deleted"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/v1/history/clear")
+def endpoint_clear_history():
+    try:
+        clear_all_history()
+        return {"status": "success", "message": "All history cleared"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
