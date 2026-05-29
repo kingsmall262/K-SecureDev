@@ -22,7 +22,7 @@ if menu == "Dashboard Home" or menu == "Code Vulnerability Patch":
         st.markdown(html_box, unsafe_allow_html=True)
         
     with col_ind:
-        st.markdown("<br><br>", unsafe_allowed_html=True)
+        st.markdown("<br><br>", unsafe_allow_html=True)
         st.error("🔴 피싱 링크 탐지 | 🔴 SQL 인젝션 취약점 | 🔴 취약한 코드 발견")
 
     st.markdown("---")
