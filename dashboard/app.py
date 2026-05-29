@@ -5,6 +5,15 @@ API_URL = "http://localhost:8000/api/v1"
 
 st.set_page_config(page_title="K-SecureDev 관제센터", page_icon="🛡️", layout="wide")
 
+if "analysis_result" not in st.session_state:
+    st.session_state.analysis_result = None
+if "risk_score" not in st.session_state:
+    st.session_state.risk_score = 0
+if "risk_status" not in st.session_state:
+    st.session_state.risk_status = "CLEAN"
+if "risk_color" not in st.session_state:
+    st.session_state.risk_color = "#10B981"
+
 st.sidebar.title("⚡ K-SecureDev")
 st.sidebar.markdown("---")
 menu = st.sidebar.radio("통합 관제 메뉴 레이어", ["Dashboard Home", "K-Phishing Scanner", "Code Vulnerability Patch", "Admin History"])
@@ -14,16 +23,21 @@ if menu == "Dashboard Home" or menu == "Code Vulnerability Patch":
     
     col_score, col_ind = st.columns([1, 2])
     with col_score:
-        html_box = "<div style='background-color: #F3F4F6; padding: 20px; border-radius: 10px; border-left: 5px solid #EF4444; text-align: center;'>"
-        html_box += "<h3 style='margin:0; color:#EF4444;'>RISK SCORE</h3>"
-        html_box += "<h1 style='margin:0; font-size:64px;'>85</h1>"
-        html_box += "<p style='margin:0; font-weight:bold; color:#DC2626;'>HIGH</p>"
+        html_box = "<div style='background-color: #F3F4F6; padding: 20px; border-radius: 10px; border-left: 5px solid " + st.session_state.risk_color + "; text-align: center;'>"
+        html_box += "<h3 style='margin:0; color:" + st.session_state.risk_color + ";'>RISK SCORE</h3>"
+        html_box += "<h1 style='margin:0; font-size:64px;'>" + str(st.session_state.risk_score) + "</h1>"
+        html_box += "<p style='margin:0; font-weight:bold; color:" + st.session_state.risk_color + ";'>" + st.session_state.risk_status + "</p>"
         html_box += "</div>"
         st.markdown(html_box, unsafe_allow_html=True)
         
     with col_ind:
         st.markdown("<br><br>", unsafe_allow_html=True)
-        st.error("🔴 피싱 링크 탐지 | 🔴 SQL 인젝션 취약점 | 🔴 취약한 코드 발견")
+        if st.session_state.risk_score >= 50:
+            st.error("🔴 위협 탐지 | 🔴 SQL 인젝션 / 버퍼 오버플로우 위협 패스 발견 | 🔴 취약한 코드 발견")
+        elif st.session_state.risk_score > 0 and st.session_state.risk_score < 50:
+            st.warning("🟡 경고 진단 | 기저 구조적 무결성 점검 필요")
+        else:
+            st.success("🟢 보안성 무결 | 현재 감지된 실시간 위협 데이터 흐름이 존재하지 않습니다.")
 
     st.markdown("---")
     
@@ -41,9 +55,22 @@ if menu == "Dashboard Home" or menu == "Code Vulnerability Patch":
                 try:
                     res = requests.post(f"{API_URL}/code-analysis", json={"filename": "auth.php", "source_code": code_data})
                     if res.status_code == 200:
-                        st.markdown(res.json()["ai_patch_guide"])
-                except:
+                        data = res.json()
+                        st.session_state.analysis_result = data.get("ai_patch_guide")
+                        st.session_state.risk_score = data.get("risk_score", 0)
+                        
+                        if data.get("vulnerable_clone_found"):
+                            st.session_state.risk_status = "HIGH"
+                            st.session_state.risk_color = "#EF4444"
+                        else:
+                            st.session_state.risk_status = "SAFE"
+                            st.session_state.risk_color = "#10B981"
+                        st.rerun()
+                except requests.RequestException:
                     st.error("백엔드 서버(Port 8000) 구동 상태를 확인하세요.")
+        
+        if st.session_state.analysis_result:
+            st.markdown(st.session_state.analysis_result)
         else:
             st.caption("분석 실행 버튼을 누르면 패치 코드가 여기에 빌드됩니다.")
 
@@ -60,5 +87,5 @@ elif menu == "K-Phishing Scanner":
             res = requests.post(f"{API_URL}/smishing", json={"text": sms_data})
             if res.status_code == 200:
                 st.json(res.json())
-        except: 
+        except requests.RequestException: 
             st.error("백엔드 서버 연동 실패")
