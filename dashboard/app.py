@@ -19,7 +19,7 @@ if menu == "Dashboard Home" or menu == "Code Vulnerability Patch":
         html_box += "<h1 style='margin:0; font-size:64px;'>85</h1>"
         html_box += "<p style='margin:0; font-weight:bold; color:#DC2626;'>HIGH</p>"
         html_box += "</div>"
-        st.markdown(html_box, unsafe_allowed_html=True)
+        st.markdown(html_box, unsafe_allow_html=True)
         
     with col_ind:
         st.markdown("<br><br>", unsafe_allowed_html=True)
