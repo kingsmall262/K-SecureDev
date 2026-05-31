@@ -1,57 +1,105 @@
-from fastapi import FastAPI, HTTPException, status
-from pydantic import BaseModel
-import logging
 import sys
 import os
+from typing import List
+from fastapi import FastAPI, HTTPException, status
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, Field
 
 # 모듈 경로 인식 문제 해결
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__name__))))
-from app.engines.smishing_engine import SmishingEngine
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-# 로깅 설정
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+from app.engines.smishing_engine import analyze_smishing
+from app.engines.code_engine import analyze_code_clone
+from app.engines.history_db import add_history, get_history, delete_history, clear_all_history
 
 # FastAPI 앱 초기화
 app = FastAPI(
     title="K-SecureDev Phishing API Gateway",
-    description="비동기 기반 스미싱/피싱 탐지 백엔드 서버"
+    description="비동기 기반 스미싱/피싱/코드 취약점 탐지 통합 백엔드 서버"
 )
 
-# 서버 시작 시 엔진 로드
-try:
-    engine = SmishingEngine()
-    logger.info("SmishingEngine 로드 성공. AI 분석 준비 완료.")
-except Exception as e:
-    logger.error(f"엔진 초기화 실패: {str(e)}")
-    raise RuntimeError("서버 엔진 초기화에 실패했습니다.")
+# CORS 미들웨어 적용 (민욱 팀원 소스)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-# 프론트엔드에서 날아올 데이터 규격(Pydantic)
-class ScanRequest(BaseModel):
+# 프론트엔드 통신 데이터 규격(Pydantic) 정의
+class SmishingRequest(BaseModel):
     text: str
 
-# API 엔드포인트
-@app.post("/api/v1/scan")
-async def scan_message(request: ScanRequest):
-    """프론트엔드에서 전송된 텍스트를 AI로 분석 후 반환"""
-    if not request.text or not request.text.strip():
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, 
-            detail="분석할 텍스트가 제공되지 않았습니다."
-        )
-    
-    # 엔진 호출 및 결과 리턴
-    result = engine.analyze_sms(request.text)
-    
-    if result.get("status") == "error":
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=result["analysis_result"]["reason"]
-        )
-        
-    return result
+class SmishingResponse(BaseModel):
+    status: str
+    analysis_result: dict
+    extracted_urls: List[str] = []
 
-# 헬스 체크용
+class CodeAnalysisRequest(BaseModel):
+    filename: str
+    source_code: str
+
+class CodeAnalysisResponse(BaseModel):
+    filename: str
+    vulnerable_clone_found: bool
+    matched_cve: str
+    risk_score: int
+    vulnerability_details: str
+    ai_patch_guide: str
+
+# 1. 헬스 체크 엔드포인트
 @app.get("/health")
-async def health_check():
-    return {"status": "ok", "message": "K-SecureDev API Server is running."}
+def health_check():
+    return {"status": "green", "message": "Backend gateway is alive"}
+
+# 2. 스미싱 탐지 엔드포인트
+@app.post("/api/v1/smishing", response_model=SmishingResponse)
+def endpoint_smishing(payload: SmishingRequest):
+    try:
+        return analyze_smishing(payload.text)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# 3. 코드 정적 분석 및 취약점 패치 엔드포인트 (add_history 자동 결합)
+@app.post("/api/v1/code-analysis", response_model=CodeAnalysisResponse)
+def endpoint_code(payload: CodeAnalysisRequest):
+    try:
+        result = analyze_code_clone(payload.filename, payload.source_code)
+        # 스캔 이력을 DB에 기록
+        add_history(
+            filename=result["filename"],
+            cwe=result["matched_cve"],
+            risk_score=result["risk_score"],
+            vulnerable=result["vulnerable_clone_found"],
+            details=result["vulnerability_details"]
+        )
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# 4. 탐지 이력 전체 조회 엔드포인트
+@app.get("/api/v1/history")
+def endpoint_get_history():
+    try:
+        return get_history()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# 5. 탐지 이력 선택 삭제 엔드포인트
+@app.delete("/api/v1/history/{record_id}")
+def endpoint_delete_history(record_id: int):
+    try:
+        delete_history(record_id)
+        return {"status": "success", "message": f"Record {record_id} deleted"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# 6. 전체 이력 초기화 엔드포인트
+@app.post("/api/v1/history/clear")
+def endpoint_clear_history():
+    try:
+        clear_all_history()
+        return {"status": "success", "message": "All history cleared"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

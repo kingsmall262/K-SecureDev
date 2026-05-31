@@ -1,0 +1,1 @@
+{"input_text":"카드발급완료","extracted_urls":[],"nlp_confidence":0.05,"url_malicious":false,"final_risk_score":0.1,"status":"SAFE"}
