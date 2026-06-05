@@ -78,6 +78,12 @@ class SmishingEngine:
                 }
             }
 
+# 싱글톤 인스턴스 생성 및 main.py에서 임포트할 래퍼 함수 추가
+_default_engine = SmishingEngine()
+
+def analyze_smishing(text: str) -> dict:
+    return _default_engine.analyze_sms(text)
+
 if __name__ == "__main__":
     engine = SmishingEngine()
     test_text = "[웹발신] 구진서님, 주문하신 상품이 주소지 오류로 배송 지연중입니다. 아래 링크에서 확인바랍니다. http://bit.ly/fake-url"

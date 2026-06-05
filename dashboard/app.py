@@ -1,8 +1,11 @@
 import streamlit as st
 import requests
 import re
-from dashboard.pdf_generator import generate_pdf_report
+import sys
+import os
 
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+from pdf_generator import generate_pdf_report
 API_URL = "http://localhost:8000/api/v1"
 
 st.set_page_config(page_title="K-SecureDev 관제센터", page_icon="🛡️", layout="wide")
