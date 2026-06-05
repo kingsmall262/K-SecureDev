@@ -66,15 +66,32 @@ class SmishingEngine:
             
         except Exception as e:
             logger.error(f"AI 엔진 분석 중 에러 발생: {str(e)}")
+            
+            # [API 오류 대비 로컬 룰베이스 예비 판독기 가동]
+            suspicious_keywords = ["국민은행", "비밀번호", "유출", "긴급", "배송지", "배송", "지연", "택배", "본인인증", "인증", "부고", "결혼"]
+            has_keyword = any(kw in text for kw in suspicious_keywords)
+            
+            # 악성 의심 키워드나 URL이 있는 경우 로컬 엔진에서 즉시 위험 판정
+            if extracted_urls or has_keyword:
+                fallback_score = 85 if (extracted_urls and has_keyword) else 65
+                fallback_phishing = True
+                fallback_threat = "사칭 의심"
+                fallback_reason = f"로컬 위협 감지: 의심 징후(키워드/링크) 포착 (API 미동작: {str(e)[:35]}...)"
+            else:
+                fallback_score = 5
+                fallback_phishing = False
+                fallback_threat = "정상"
+                fallback_reason = f"로컬 분석 정상: 특이 징후 없음 (API 미동작: {str(e)[:35]}...)"
+                
             return {
-                "status": "error",
+                "status": "warning",
                 "original_text": text,
                 "extracted_urls": extracted_urls,
                 "analysis_result": {
-                    "risk_score": 0,
-                    "is_phishing": False,
-                    "threat_type": "알 수 없음",
-                    "reason": f"엔진 통신 오류: {str(e)}"
+                    "risk_score": fallback_score,
+                    "is_phishing": fallback_phishing,
+                    "threat_type": fallback_threat,
+                    "reason": fallback_reason
                 }
             }
 

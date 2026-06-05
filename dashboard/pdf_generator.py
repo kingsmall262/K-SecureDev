@@ -167,3 +167,132 @@ def generate_pdf_report(filename: str, cwe: str, risk_score: int, details: str, 
     doc.build(story)
     buffer.seek(0)
     return buffer
+
+def generate_smishing_pdf_report(sms_text: str, threat_type: str, risk_score: int, reason: str, urls: list) -> io.BytesIO:
+    buffer = io.BytesIO()
+    
+    font_name = "Helvetica"
+    font_bold_name = "Helvetica-Bold"
+    
+    malgun_path = "C:\\Windows\\Fonts\\malgun.ttf"
+    malgun_bold_path = "C:\\Windows\\Fonts\\malgunbd.ttf"
+    
+    if os.path.exists(malgun_path):
+        try:
+            pdfmetrics.registerFont(TTFont("MalgunGothic", malgun_path))
+            font_name = "MalgunGothic"
+            
+            if os.path.exists(malgun_bold_path):
+                pdfmetrics.registerFont(TTFont("MalgunGothic-Bold", malgun_bold_path))
+                font_bold_name = "MalgunGothic-Bold"
+            else:
+                font_bold_name = "MalgunGothic"
+        except Exception:
+            pass
+            
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=letter,
+        rightMargin=45,
+        leftMargin=45,
+        topMargin=45,
+        bottomMargin=45
+    )
+    
+    styles = getSampleStyleSheet()
+    
+    title_style = ParagraphStyle(
+        'DocTitle',
+        parent=styles['Normal'],
+        fontName=font_bold_name,
+        fontSize=22,
+        leading=26,
+        textColor=colors.HexColor("#1E3A8A"),
+        alignment=1,
+        spaceAfter=25
+    )
+    
+    h1_style = ParagraphStyle(
+        'SectionHeader',
+        parent=styles['Normal'],
+        fontName=font_bold_name,
+        fontSize=13,
+        leading=16,
+        textColor=colors.HexColor("#1E3A8A"),
+        spaceBefore=18,
+        spaceAfter=8
+    )
+    
+    body_style = ParagraphStyle(
+        'BodyTextKor',
+        parent=styles['Normal'],
+        fontName=font_name,
+        fontSize=9.5,
+        leading=14,
+        textColor=colors.HexColor("#374151")
+    )
+    
+    story = []
+    
+    # 1. 타이틀
+    story.append(Paragraph("🛡️ K-SecureDev 스미싱 위협 분석 리포트", title_style))
+    story.append(Spacer(1, 5))
+    
+    # 2. 분석 정보 메타 테이블
+    risk_color = "#DC2626" if risk_score >= 50 else ("#D97706" if risk_score > 0 else "#16A34A")
+    risk_text = "위험 (HIGH)" if risk_score >= 50 else ("경고 (WARNING)" if risk_score > 0 else "안전 (SAFE)")
+    
+    now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    
+    meta_data = [
+        [Paragraph(f"<b>분석 수행 시간</b>", body_style), Paragraph(now_str, body_style)],
+        [Paragraph(f"<b>탐지된 위협 유형</b>", body_style), Paragraph(threat_type, body_style)],
+        [Paragraph(f"<b>실시간 리스크 점수</b>", body_style), Paragraph(f"<font color='{risk_color}'><b>{risk_text} ({risk_score}점)</b></font>", body_style)]
+    ]
+    
+    meta_table = Table(meta_data, colWidths=[140, 380])
+    meta_table.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (0,-1), colors.HexColor("#F3F4F6")),
+        ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor("#E5E7EB")),
+        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+        ('TOPPADDING', (0,0), (-1,-1), 6),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 6),
+        ('LEFTPADDING', (0,0), (-1,-1), 10),
+        ('RIGHTPADDING', (0,0), (-1,-1), 10),
+    ]))
+    story.append(meta_table)
+    story.append(Spacer(1, 15))
+    
+    # 3. 입력 메시지 내역
+    story.append(Paragraph("🔍 1. 의심 위협 데이터 (원본 문자 메시지)", h1_style))
+    safe_sms = sms_text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\n", "<br/>")
+    story.append(Paragraph(safe_sms, body_style))
+    story.append(Spacer(1, 10))
+    
+    if urls:
+        story.append(Paragraph("🔗 2. 추출된 악성 의심 링크 (URL)", h1_style))
+        for url in urls:
+            story.append(Paragraph(f"<font color='#DC2626'><b>{url}</b></font>", body_style))
+            story.append(Spacer(1, 4))
+        story.append(Spacer(1, 10))
+        
+    # 4. AI 분석 결과
+    story.append(Paragraph("🤖 3. K-SecureDev AI 사칭 위협 판독 소견", h1_style))
+    safe_reason = reason.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\n", "<br/>")
+    story.append(Paragraph(safe_reason, body_style))
+    
+    # 5. 하단 고지
+    story.append(Spacer(1, 25))
+    footer_style = ParagraphStyle(
+        'FooterStyle',
+        parent=styles['Normal'],
+        fontName=font_name,
+        fontSize=7.5,
+        textColor=colors.HexColor("#9CA3AF"),
+        alignment=1
+    )
+    story.append(Paragraph("본 리포트는 K-SecureDev KoBERT 및 Gemini AI 보안 엔진에 의해 실시간 자동 판독된 분석 리포트입니다. 수신된 의심 문자 링크 접속을 금지하십시오.", footer_style))
+    
+    doc.build(story)
+    buffer.seek(0)
+    return buffer
