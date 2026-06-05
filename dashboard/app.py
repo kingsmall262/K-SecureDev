@@ -5,9 +5,10 @@ import sys
 import os
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-from pdf_generator import generate_pdf_report
+from pdf_generator import generate_pdf_report, generate_smishing_pdf_report
 API_URL = "http://localhost:8000/api/v1"
 
+# 대시보드 테마 설정 및 페이지 구성
 st.set_page_config(page_title="K-SecureDev 관제센터", page_icon="🛡️", layout="wide")
 
 # 세션 상태 초기화
@@ -25,6 +26,24 @@ if "matched_cve" not in st.session_state:
     st.session_state.matched_cve = "N/A"
 if "vulnerability_details" not in st.session_state:
     st.session_state.vulnerability_details = ""
+
+# SMS 스캐너 상태 관리 변수 추가
+if "sms_analysis_result" not in st.session_state:
+    st.session_state.sms_analysis_result = None
+if "sms_risk_score" not in st.session_state:
+    st.session_state.sms_risk_score = 0
+if "sms_risk_status" not in st.session_state:
+    st.session_state.sms_risk_status = "CLEAN"
+if "sms_risk_color" not in st.session_state:
+    st.session_state.sms_risk_color = "#10B981"
+if "sms_threat_type" not in st.session_state:
+    st.session_state.sms_threat_type = "정상"
+if "sms_reason" not in st.session_state:
+    st.session_state.sms_reason = ""
+if "sms_extracted_urls" not in st.session_state:
+    st.session_state.sms_extracted_urls = []
+if "sms_text" not in st.session_state:
+    st.session_state.sms_text = ""
 
 # 클립보드 복사를 위한 마크다운 내 코드 추출 헬퍼 함수
 def extract_code_block(markdown_text: str) -> str:
@@ -49,7 +68,7 @@ def render_copy_button(text_to_copy: str):
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        background-color: #4F46E5;
+        background-color: #2563EB;
         color: white;
         border: none;
         padding: 0.5rem 1rem;
@@ -62,7 +81,7 @@ def render_copy_button(text_to_copy: str):
         width: 100%%;
         height: 38px;
     ">
-        📋 패치 코드 복사하기
+        패치 코드 복사
     </button>
     <div id="status" style="
         color: #10B981; 
@@ -72,7 +91,7 @@ def render_copy_button(text_to_copy: str):
         font-family: sans-serif; 
         display: none;
         font-weight: bold;
-    ">✅ 복사 완료!</div>
+    ">복사 완료</div>
     <script>
     document.getElementById('btn-copy').addEventListener('click', function() {{
         const text = "{escaped_text}";
@@ -100,23 +119,24 @@ def render_copy_button(text_to_copy: str):
     """
     st.components.v1.html(js_code, height=65)
 
-# 사이드바 레이아웃
-st.sidebar.title("⚡ K-SecureDev")
+# 사이드바 레이아웃 (정제된 엔터프라이즈 느낌으로 변경)
+st.sidebar.markdown("<h2 style='margin-bottom:0px; font-weight:700; color:#FFFFFF;'>K-SecureDev</h2>", unsafe_allow_html=True)
+st.sidebar.markdown("<p style='font-size:12px; color:#64748B;'>통합 보안 관제 시스템</p>", unsafe_allow_html=True)
 st.sidebar.markdown("---")
-menu = st.sidebar.radio("통합 관제 메뉴 레이어", ["Dashboard Home", "K-Phishing Scanner", "Code Vulnerability Patch", "Admin History"])
+menu = st.sidebar.radio("관제 메뉴 선택", ["Dashboard Home", "K-Phishing Scanner", "Code Vulnerability Patch", "Admin History"])
 
 if menu == "Dashboard Home":
-    st.title("🛡️ K-SecureDev 통합 보안 비서 관제 센터")
-    st.markdown("한국형 사회공학적 위협 탐지 및 정적 분석(CPG)과 AI Safe-Clone 패치 관리를 위한 통합 플랫폼입니다.")
+    st.title("K-SecureDev 통합 보안 관제 포털")
+    st.markdown("한국형 사회공학적 피싱 탐지 및 프로그램 데이터 흐름(CPG) 정적 분석 통합 관리 대시보드")
     st.markdown("---")
     
-    # 웰컴 배너 및 핵심 설명
+    # 웰컴 배너 및 핵심 설명 (세련된 기업용 레이아웃)
     st.markdown(
         """
-        <div style="background: linear-gradient(135deg, #1E3A8A 0%, #3B82F6 100%); padding: 30px; border-radius: 12px; color: white; margin-bottom: 25px;">
-            <h2 style="margin: 0; font-size: 28px; font-weight: 700;">Welcome to K-SecureDev Portal</h2>
-            <p style="margin: 10px 0 0 0; font-size: 15px; opacity: 0.9; line-height: 1.6;">
-                K-SecureDev는 국내 특유의 문맥적 사칭 스미싱 메시지를 포착하는 <b>한국어 특화 탐지 엔진(KoBERT)</b>과, 소스코드의 비검증 데이터 흐름을 정적 기법으로 정밀 진단하는 <b>CPG 정적 분석기(Joern)</b>, 그리고 탐지된 취약점에 대해 시스템의 무결성을 깨뜨리지 않는 가장 안전한 패치 코드를 제안하는 <b>AI Safe-Clone 모델(Gemini)</b>이 융합된 차세대 통합 보안 관제 플랫폼입니다.
+        <div style="background: linear-gradient(135deg, #0F172A 0%, #1E293B 100%); padding: 30px; border-radius: 12px; color: white; margin-bottom: 25px; border-left: 5px solid #2563EB;">
+            <h2 style="margin: 0; font-size: 26px; font-weight: 700; color: #F8FAFC;">보안 분석 요약 및 프레임워크 개요</h2>
+            <p style="margin: 12px 0 0 0; font-size: 14.5px; opacity: 0.9; line-height: 1.6; color: #CBD5E1;">
+                K-SecureDev는 국내 사회공학적 사칭 문맥을 인지하는 <b>한국어 특화 탐지 엔진(KoBERT)</b>과, 소스코드의 비검증 데이터 흐름을 추적하는 <b>정적 분석 엔진(Joern CPG)</b>, 그리고 탐지된 취약점에 대해 시스템 호환성(CodeBLEU 0.85 이상)을 유지하며 교정하는 <b>AI Safe-Clone 모델(Gemini)</b>이 결합된 통합 위협 대응 솔루션입니다.
             </p>
         </div>
         """,
@@ -128,10 +148,10 @@ if menu == "Dashboard Home":
     with c1:
         st.markdown(
             """
-            <div style="background-color: #F8FAFC; border: 1px solid #E2E8F0; padding: 22px; border-radius: 8px; min-height: 200px;">
-                <h4 style="margin-top: 0; color: #1E3A8A; font-size: 16px;">💬 K-Phishing Scanner</h4>
-                <p style="font-size: 13px; color: #475569; line-height: 1.5;">한국어 문장 구조 및 조사의 차이까지 정밀하게 읽어내어 일반 안내 메시지와 사회공학적 사칭 문자를 완벽히 구분 판독합니다.</p>
-                <span style="font-size: 12px; font-weight: bold; color: #3B82F6; cursor: pointer;">👈 사이드바 [K-Phishing Scanner] 선택</span>
+            <div style="background-color: #FFFFFF; border: 1px solid #E2E8F0; padding: 22px; border-radius: 8px; min-height: 190px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+                <h4 style="margin-top: 0; color: #1E3A8A; font-size: 15px; font-weight:700; border-bottom: 2px solid #EFF6FF; padding-bottom: 8px;">K-Phishing Scanner</h4>
+                <p style="font-size: 13px; color: #475569; line-height: 1.5; margin-top: 10px;">한국어 문장 형태와 미묘한 어미 차이를 심층 판독하여 신종 사회공학적 스미싱 공격을 실시간 감지합니다.</p>
+                <span style="font-size: 12px; font-weight: bold; color: #2563EB;">사이드바 [K-Phishing Scanner] 탭 사용</span>
             </div>
             """,
             unsafe_allow_html=True
@@ -139,10 +159,10 @@ if menu == "Dashboard Home":
     with c2:
         st.markdown(
             """
-            <div style="background-color: #F8FAFC; border: 1px solid #E2E8F0; padding: 22px; border-radius: 8px; min-height: 200px;">
-                <h4 style="margin-top: 0; color: #1E3A8A; font-size: 16px;">🔍 Joern CPG Engine</h4>
-                <p style="font-size: 13px; color: #475569; line-height: 1.5;">소스코드 내부를 정형 그래프 형태(CPG)로 변환해 외부 유입 데이터가 위험 싱크(strcpy 등)로 흘러 들어가는 보안 위협 흐름을 추적합니다.</p>
-                <span style="font-size: 12px; font-weight: bold; color: #3B82F6; cursor: pointer;">👈 사이드바 [Code Vulnerability Patch] 선택</span>
+            <div style="background-color: #FFFFFF; border: 1px solid #E2E8F0; padding: 22px; border-radius: 8px; min-height: 190px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+                <h4 style="margin-top: 0; color: #1E3A8A; font-size: 15px; font-weight:700; border-bottom: 2px solid #EFF6FF; padding-bottom: 8px;">Joern CPG Engine</h4>
+                <p style="font-size: 13px; color: #475569; line-height: 1.5; margin-top: 10px;">코드의 비검증 입력 데이터가 위험 함수(strcpy, query 등)로 유입되는 소스-싱크 흐름을 전적 정적 그래프(CPG)로 정밀 진단합니다.</p>
+                <span style="font-size: 12px; font-weight: bold; color: #2563EB;">사이드바 [Code Vulnerability Patch] 탭 사용</span>
             </div>
             """,
             unsafe_allow_html=True
@@ -150,10 +170,10 @@ if menu == "Dashboard Home":
     with c3:
         st.markdown(
             """
-            <div style="background-color: #F8FAFC; border: 1px solid #E2E8F0; padding: 22px; border-radius: 8px; min-height: 200px;">
-                <h4 style="margin-top: 0; color: #1E3A8A; font-size: 16px;">🤖 Gemini AI Safe-Patch</h4>
-                <p style="font-size: 13px; color: #475569; line-height: 1.5;">검출된 정적 분석 결과를 바탕으로, 프로젝트의 구문 및 데이터 흐름 일치도(CodeBLEU 0.85↑)를 만족하는 보안 교정 패치 코드를 실시간 생성합니다.</p>
-                <span style="font-size: 12px; font-weight: bold; color: #3B82F6;">📋 클립보드 복사 및 PDF 파일 추출 지원</span>
+            <div style="background-color: #FFFFFF; border: 1px solid #E2E8F0; padding: 22px; border-radius: 8px; min-height: 190px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+                <h4 style="margin-top: 0; color: #1E3A8A; font-size: 15px; font-weight:700; border-bottom: 2px solid #EFF6FF; padding-bottom: 8px;">Gemini AI Safe-Patch</h4>
+                <p style="font-size: 13px; color: #475569; line-height: 1.5; margin-top: 10px;">정밀 진단된 보안 결함 데이터를 참조하여, 기존 비즈니스 기능을 훼손하지 않는 안전한 대체 코드(Safe-Clone)를 즉시 설계합니다.</p>
+                <span style="font-size: 12px; font-weight: bold; color: #2563EB;">원클릭 클립보드 복사 및 PDF 리포트 지원</span>
             </div>
             """,
             unsafe_allow_html=True
@@ -161,8 +181,8 @@ if menu == "Dashboard Home":
         
     st.markdown("---")
     
-    # 📊 플랫폼 실시간 탐지 통계 요약 (Admin History DB와 동적 연동)
-    st.subheader("📊 플랫폼 실시간 위협 관제 통계")
+    # 플랫폼 실시간 탐지 통계 요약 (Admin History DB와 동적 연동)
+    st.subheader("통합 관제 실시간 위험 지표")
     
     history_data = []
     try:
@@ -202,57 +222,84 @@ if menu == "Dashboard Home":
             st.metric("누적 위협 분석 횟수", f"{len(df)} 회")
         with hc2:
             vuln_count = sum(df["vulnerable"])
-            st.metric("누적 보안 취약 소스코드 검출", f"{vuln_count} 건", delta=f"{vuln_count} 건 발생" if vuln_count > 0 else "0", delta_color="inverse")
+            st.metric("누적 보안 결함 검출", f"{vuln_count} 건", delta=f"{vuln_count} 건 발생" if vuln_count > 0 else "0", delta_color="inverse")
         with hc3:
             avg_score = df["risk_score"].mean()
             st.metric("시스템 평균 위험지수", f"{avg_score:.1f} 점")
             
-        st.markdown("#### 🚨 실시간 최신 탐지 결함 로그 (최근 3건)")
+        st.markdown("#### 최근 탐지된 코드 위협 로그 (최근 3건)")
         df_latest = df[["filename", "scan_time", "cwe", "risk_score", "vulnerable"]].head(3).copy()
-        df_latest.columns = ["분석 파일명", "진단 일시", "탐지된 CWE 위협 유형", "리스크 점수", "취약 상태"]
-        df_latest["취약 상태"] = df_latest["취약 상태"].map(lambda x: "🔴 취약점 발견" if x else "🟢 안전함")
+        df_latest.columns = ["분석 파일명", "진단 일시", "CWE 위협 유형", "리스크 점수", "상태"]
+        df_latest["상태"] = df_latest["상태"].map(lambda x: "위협 감지" if x else "안전")
         st.dataframe(df_latest, use_container_width=True, hide_index=True)
     else:
-        st.info("💡 현재 데이터베이스에 기록된 정적 분석 이력이 존재하지 않습니다. [Code Vulnerability Patch] 탭에서 첫 코드 스캔을 구동하시면 플랫폼 관제 통계 보드가 실시간으로 활성화됩니다!")
+        st.info("데이터베이스에 기록된 정적 분석 이력이 없습니다. Code Vulnerability Patch 탭에서 분석을 진행해 보세요.")
 
 elif menu == "Code Vulnerability Patch":
-    st.title("🛡️ 소스코드 취약점 정적 분석 & Safe-Clone 패치")
-    st.markdown("C / PHP 소스코드를 업로드하여 Joern CPG 정밀 취약 흐름을 검출하고 AI가 안전하게 보완한 패치 가이드를 제공합니다.")
+    st.title("소스코드 취약점 정적 분석 & Safe-Clone 패치")
+    st.markdown("Joern CPG 정밀 취약 경로 검출 및 Gemini API 연동 Safe-Clone 보안 교정 패치 엔진")
     st.markdown("---")
     
     col_score, col_ind = st.columns([1, 2])
+    
+    # RISK SCORE 박스 스타일 개선 (흰색 배경 + 가독성 높은 색상의 숫자 매핑)
     with col_score:
-        html_box = "<div style='background-color: #F3F4F6; padding: 20px; border-radius: 10px; border-left: 5px solid " + st.session_state.risk_color + "; text-align: center;'>"
-        html_box += "<h3 style='margin:0; color:" + st.session_state.risk_color + ";'>RISK SCORE</h3>"
-        html_box += "<h1 style='margin:0; font-size:64px;'>" + str(st.session_state.risk_score) + "</h1>"
-        html_box += "<p style='margin:0; font-weight:bold; color:" + st.session_state.risk_color + ";'>" + st.session_state.risk_status + "</p>"
-        html_box += "</div>"
+        score_val = st.session_state.risk_score
+        
+        # 위험 수준에 따른 동적 컬러 매핑 (흰색 배경에 최적화된 고대비 색상)
+        if score_val >= 50:
+            score_color = "#DC2626"      # 강한 레드
+            status_text = "HIGH RISK"
+        elif score_val > 0:
+            score_color = "#D97706"      # 선명한 오렌지/앰버
+            status_text = "WARNING"
+        else:
+            score_color = "#16A34A"      # 선명한 그린
+            status_text = "SECURE"
+            
+        html_box = f"""
+        <div style="
+            background-color: #FFFFFF; 
+            color: #1E293B;
+            padding: 25px; 
+            border-radius: 12px; 
+            border: 2px solid #000000; 
+            text-align: center;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05), 0 1px 3px rgba(0, 0, 0, 0.05);
+            font-family: ui-sans-serif, system-ui, sans-serif;
+        ">
+            <span style="font-size: 13px; font-weight: 700; letter-spacing: 1.5px; color: #64748B; text-transform: uppercase;">RISK SCORE</span>
+            <h1 style="margin: 8px 0; font-size: 68px; font-weight: 900; color: #000000; line-height: 1.1; font-family: monospace;">{score_val}</h1>
+            <span style="background-color: {score_color}15; color: {score_color}; padding: 3px 12px; border-radius: 9999px; font-size: 11px; font-weight: 800; border: 1px solid {score_color}33;">
+                {status_text}
+            </span>
+        </div>
+        """
         st.markdown(html_box, unsafe_allow_html=True)
         
     with col_ind:
-        st.markdown("<br><br>", unsafe_allow_html=True)
+        st.markdown("<br>", unsafe_allow_html=True)
         if st.session_state.risk_score >= 50:
-            st.error("🔴 위협 탐지 | 🔴 SQL 인젝션 / 버퍼 오버플로우 위협 패스 발견 | 🔴 취약한 코드 발견")
+            st.error("위협 탐지 | SQL 인젝션 / 버퍼 오버플로우 공격 가능 데이터 흐름 포착 | 취약한 코드가 검출되었습니다.")
         elif st.session_state.risk_score > 0 and st.session_state.risk_score < 50:
-            st.warning("🟡 경고 진단 | 기저 구조적 무결성 점검 필요")
+            st.warning("경고 진단 | 소스코드 무결성 보안 보완 권고")
         else:
-            st.success("🟢 보안성 무결 | 현재 감지된 실시간 위협 데이터 흐름이 존재하지 않습니다.")
+            st.success("보안성 무결 | 정적 데이터 흐름(CPG) 분석 결과, 안전함이 보장되었습니다.")
 
     st.markdown("---")
     
     c_left, c_right = st.columns(2)
     with c_left:
-        st.subheader("📋 입력된 위협 데이터")
+        st.subheader("진단 대상 소스코드")
         default_code = "$user_input = $_GET['id'];\n$query = \"SELECT * FROM users WHERE id = \" . $user_input;\n$result = mysqli_query($conn, $query);"
-        code_data = st.text_area("C / PHP 소스코드 입력 피드", value=default_code, height=200)
-        btn_scan = st.button("🚀 정적 분석 및 Safe-Clone 요청")
+        code_data = st.text_area("C / PHP 소스코드 입력 피드", value=default_code, height=220, label_visibility="collapsed")
+        btn_scan = st.button("정적 분석 및 Safe-Clone 생성 요청", type="primary", use_container_width=True)
 
     with c_right:
-        st.subheader("🔒 Safe-Clone 제안")
+        st.subheader("보안 대체 Safe-Clone 제안")
         if btn_scan:
-            with st.spinner("Joern CPG 컴파일 및 취약성 대조 알고리즘 수행 중..."):
+            with st.spinner("Joern CPG 그래프 컴파일 및 취약 경로 대조 연산 중..."):
                 try:
-                    # 입력 파일 형식 자동 감지
                     is_c = "strcpy" in code_data or "char buffer" in code_data or "main(" in code_data
                     target_filename = "vulnerable.c" if is_c else "auth.php"
                     
@@ -273,14 +320,14 @@ elif menu == "Code Vulnerability Patch":
                             st.session_state.risk_color = "#10B981"
                         st.rerun()
                 except requests.RequestException:
-                    st.error("백엔드 서버(Port 8000) 구동 상태를 확인하세요.")
+                    st.error("백엔드 관제 API 서버(Port 8000) 구동 여부를 확인하세요.")
         
         if st.session_state.analysis_result:
             st.markdown(st.session_state.analysis_result)
         else:
-            st.caption("분석 실행 버튼을 누르면 패치 코드가 여기에 빌드됩니다.")
+            st.info("소스코드 정적 분석 요청 버튼을 클릭하면 최적의 AI 패치 제안 및 대체 가이드가 여기에 출력됩니다.")
 
-    # 하단 유틸리티 버튼 영역
+    # 하단 유틸리티 버튼 영역 (깔끔하고 세련된 버튼 구성)
     st.markdown("---")
     cb1, cb2, _ = st.columns([1, 1, 3])
     with cb1:
@@ -288,7 +335,7 @@ elif menu == "Code Vulnerability Patch":
             code_to_copy = extract_code_block(st.session_state.analysis_result)
             render_copy_button(code_to_copy)
         else:
-            st.button("📋 패치 코드 복사하기", disabled=True)
+            st.button("패치 코드 복사", disabled=True, use_container_width=True)
             
     with cb2:
         if st.session_state.analysis_result:
@@ -301,30 +348,137 @@ elif menu == "Code Vulnerability Patch":
                     patch_guide=st.session_state.analysis_result
                 )
                 st.download_button(
-                    label="📥 분석 리포트 PDF 저장",
+                    label="분석 리포트 PDF 저장",
                     data=pdf_data,
                     file_name=f"K-SecureDev_Report_{st.session_state.filename}.pdf",
-                    mime="application/pdf"
+                    mime="application/pdf",
+                    use_container_width=True
                 )
             except Exception as e:
-                st.error(f"PDF 리포트 생성 에러: {str(e)}")
+                st.error(f"PDF 리포트 생성 실패: {str(e)}")
         else:
-            st.button("📥 분석 리포트 PDF 저장", disabled=True)
+            st.button("분석 리포트 PDF 저장", disabled=True, use_container_width=True)
 
 elif menu == "K-Phishing Scanner":
-    st.subheader("💬 한국어 특화 사칭 스미싱 스캐너")
-    sms_data = st.text_area("SMS 문자 본문", value="[국민은행] 긴급: 비밀번호가 유출되었습니다. http://kb-bank.io/check_acct")
-    if st.button("사회공학적 의도 판독"):
-        try:
-            res = requests.post(f"{API_URL}/smishing", json={"text": sms_data})
-            if res.status_code == 200:
-                st.json(res.json())
-        except requests.RequestException: 
-            st.error("백엔드 서버 연동 실패")
+    st.title("한국어 사칭 스미싱 스캐너")
+    st.markdown("인공지능 모델(KoBERT)을 통하여 수신된 메시지의 사회공학적 위협 및 피싱 링크 포함 여부를 스캔합니다.")
+    st.markdown("---")
+    
+    col_score, col_ind = st.columns([1, 2])
+    
+    # 1. RISK SCORE 박스 (흰색 배경 + 검정 테두리 + 검은 점수 + 상태 배지)
+    with col_score:
+        score_val = st.session_state.sms_risk_score
+        
+        # 위험 수준에 따른 동적 컬러 매핑 (흰색 배경에 최적화된 고대비 색상)
+        if score_val >= 50:
+            score_color = "#DC2626"      # 강한 레드
+            status_text = "HIGH RISK"
+        elif score_val > 0:
+            score_color = "#D97706"      # 선명한 오렌지/앰버
+            status_text = "WARNING"
+        else:
+            score_color = "#16A34A"      # 선명한 그린
+            status_text = "SECURE"
+            
+        html_box = f"""
+        <div style="
+            background-color: #FFFFFF; 
+            color: #1E293B;
+            padding: 25px; 
+            border-radius: 12px; 
+            border: 2px solid #000000; 
+            text-align: center;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05), 0 1px 3px rgba(0, 0, 0, 0.05);
+            font-family: ui-sans-serif, system-ui, sans-serif;
+        ">
+            <span style="font-size: 13px; font-weight: 700; letter-spacing: 1.5px; color: #64748B; text-transform: uppercase;">RISK SCORE</span>
+            <h1 style="margin: 8px 0; font-size: 68px; font-weight: 900; color: #000000; line-height: 1.1; font-family: monospace;">{score_val}</h1>
+            <span style="background-color: {score_color}15; color: {score_color}; padding: 3px 12px; border-radius: 9999px; font-size: 11px; font-weight: 800; border: 1px solid {score_color}33;">
+                {status_text}
+            </span>
+        </div>
+        """
+        st.markdown(html_box, unsafe_allow_html=True)
+        
+    with col_ind:
+        st.markdown("<br>", unsafe_allow_html=True)
+        if st.session_state.sms_analysis_result:
+            is_phishing = st.session_state.sms_analysis_result.get("analysis_result", {}).get("is_phishing", False)
+            threat_type = st.session_state.sms_threat_type
+            if is_phishing:
+                st.error(f"위협 탐지 | {threat_type} | 입력된 메시지에서 악의적인 스미싱/피싱 패턴이 발견되었습니다.")
+            else:
+                st.success(f"보안성 무결 | 정상 | 감지된 실시간 스미싱 위협 징후가 존재하지 않습니다.")
+        else:
+            st.info("문자 본문을 입력한 후 분석을 실행하시면 탐지 결과 및 위협 분류 정보가 여기에 활성화됩니다.")
+
+    st.markdown("---")
+    
+    c_left, c_right = st.columns(2)
+    with c_left:
+        st.subheader("진단 대상 문자 메시지")
+        sms_data = st.text_area("SMS 문자 본문", value="[국민은행] 긴급: 비밀번호가 유출되었습니다. http://kb-bank.io/check_acct", height=180, label_visibility="collapsed")
+        btn_scan = st.button("의도 분석 및 판독 실행", type="primary", use_container_width=True)
+
+    with c_right:
+        st.subheader("AI 사칭 위협 판독 소견")
+        if btn_scan:
+            with st.spinner("한국어 피싱 문맥 스캔 분석 중..."):
+                try:
+                    res = requests.post(f"{API_URL}/smishing", json={"text": sms_data})
+                    if res.status_code == 200:
+                        data = res.json()
+                        st.session_state.sms_analysis_result = data
+                        
+                        ans = data.get("analysis_result", {})
+                        st.session_state.sms_risk_score = ans.get("risk_score", 0)
+                        st.session_state.sms_threat_type = ans.get("threat_type", "알 수 없음")
+                        st.session_state.sms_reason = ans.get("reason", "")
+                        st.session_state.sms_extracted_urls = data.get("extracted_urls", [])
+                        st.session_state.sms_text = sms_data
+                        
+                        st.rerun()
+                except requests.RequestException: 
+                    st.error("백엔드 서버와 연동되지 않았습니다.")
+                    
+        if st.session_state.sms_reason:
+            st.markdown(f"#### 판독 유형: **{st.session_state.sms_threat_type}**")
+            st.info(st.session_state.sms_reason)
+            if st.session_state.sms_extracted_urls:
+                st.warning("🔗 **추출된 의심 도메인 (접속 절대 금지):**\n" + "\n".join([f"- {url}" for url in st.session_state.sms_extracted_urls]))
+        else:
+            st.info("스캔을 실행하면 메시지의 상세 분석 결과가 여기에 출력됩니다.")
+
+    # 하단 유틸리티 버튼 영역 (스미싱 리포트 다운로드 기능 탑재)
+    st.markdown("---")
+    _, cb_pdf, _ = st.columns([1.5, 2, 1.5])
+    with cb_pdf:
+        import datetime
+        if st.session_state.sms_reason:
+            try:
+                sms_pdf = generate_smishing_pdf_report(
+                    sms_text=st.session_state.sms_text,
+                    threat_type=st.session_state.sms_threat_type,
+                    risk_score=st.session_state.sms_risk_score,
+                    reason=st.session_state.sms_reason,
+                    urls=st.session_state.sms_extracted_urls
+                )
+                st.download_button(
+                    label="스미싱 분석 리포트 PDF 저장",
+                    data=sms_pdf,
+                    file_name=f"K-SecureDev_Smishing_Report_{datetime.datetime.now().strftime('%Y%m%d%H%M')}.pdf",
+                    mime="application/pdf",
+                    use_container_width=True
+                )
+            except Exception as e:
+                st.error(f"PDF 리포트 생성 실패: {str(e)}")
+        else:
+            st.button("스미싱 분석 리포트 PDF 저장", disabled=True, use_container_width=True)
 
 elif menu == "Admin History":
-    st.title("🗄️ K-SecureDev 위협 분석 이력 관리")
-    st.markdown("시스템을 통해 수행된 소스코드 취약점 및 악성 흐름 검사 이력을 모니터링하고 관리합니다.")
+    st.title("위협 분석 이력 관리")
+    st.markdown("K-SecureDev 보안 엔진을 통해 검출되었던 위협 분석 기록을 관리 및 삭제합니다.")
     st.markdown("---")
     
     # API 서버로부터 데이터 이력 조회
@@ -334,9 +488,8 @@ elif menu == "Admin History":
         if res.status_code == 200:
             history_data = res.json()
         else:
-            st.error("백엔드 서버로부터 이력 데이터를 가져올 수 없습니다.")
+            st.error("이력 데이터를 백엔드로부터 검색하지 못했습니다.")
     except requests.RequestException:
-        # 백엔드 비활성화 시 로컬 SQLite DB 직접 연동 백업 모드
         try:
             import sqlite3
             import os
@@ -359,18 +512,17 @@ elif menu == "Admin History":
                     })
                 conn.close()
         except Exception as e:
-            st.error(f"로컬 이력 DB 직접 로드 오류: {str(e)}")
+            st.error(f"로컬 이력 DB 연결 오류: {str(e)}")
 
     if history_data:
         import pandas as pd
         df = pd.DataFrame(history_data)
         
-        # 보기 쉽게 컬럼명 맵핑 및 가독성 개선
+        # 컬럼명 매핑 및 가독성 개선
         df_display = df[["id", "filename", "scan_time", "cwe", "risk_score", "vulnerable", "details"]].copy()
-        df_display.columns = ["이력 ID", "파일명", "탐지 일시", "탐지된 CWE", "위험도 점수", "취약 여부", "상세 진단 정보"]
-        df_display["취약 여부"] = df_display["취약 여부"].map(lambda x: "🔴 취약함" if x else "🟢 안전함")
+        df_display.columns = ["이력 ID", "파일명", "탐지 일시", "CWE 위협 유형", "위험도 점수", "취약 여부", "진단 상세 정보"]
+        df_display["취약 여부"] = df_display["취약 여부"].map(lambda x: "취약함" if x else "안전")
         
-        # 상단 실시간 요약 통계 정보 제공
         c_tot, c_vuln, c_avg = st.columns(3)
         with c_tot:
             st.metric("총 분석 횟수", f"{len(df)} 회")
@@ -381,35 +533,32 @@ elif menu == "Admin History":
             avg_score = df["risk_score"].mean()
             st.metric("평균 위험도 점수", f"{avg_score:.1f} 점")
             
-        st.markdown("### 📋 전체 검사 로그 리스트")
-        # 데이터 검색 필터 구현
-        search_query = st.text_input("🔍 파일명 또는 CWE 위협 키워드 검색", "")
+        st.markdown("### 전체 검사 이력 로그")
+        search_query = st.text_input("검증 파일 또는 위협 유형 키워드 검색", "")
         if search_query:
             df_display = df_display[
                 df_display["파일명"].str.contains(search_query, case=False) |
-                df_display["탐지된 CWE"].str.contains(search_query, case=False)
+                df_display["CWE 위협 유형"].str.contains(search_query, case=False)
             ]
             
         st.dataframe(df_display, use_container_width=True, hide_index=True)
         
         st.markdown("---")
-        st.subheader("⚙️ 관리 데이터 클렌징")
+        st.subheader("위협 로그 클렌징 및 관리")
         
         c_del, c_clear, _ = st.columns([2, 1.5, 3.5])
         with c_del:
             col_id, col_btn = st.columns([2, 1])
             with col_id:
-                del_id = st.number_input("삭제할 이력 번호(ID) 입력", min_value=1, step=1, key="del_id_input")
+                del_id = st.number_input("삭제할 이력 ID", min_value=1, step=1, key="del_id_input", label_visibility="collapsed")
             with col_btn:
-                st.markdown("<div style='height:28px;'></div>", unsafe_allow_html=True)
-                if st.button("🗑️ 선택 삭제", type="primary", use_container_width=True):
+                if st.button("이력 삭제", type="primary", use_container_width=True):
                     try:
                         res = requests.delete(f"{API_URL}/history/{del_id}")
                         if res.status_code == 200:
-                            st.toast(f"ID {del_id} 이력이 삭제되었습니다.")
+                            st.toast(f"이력 ID {del_id} 삭제 완료")
                             st.rerun()
                         else:
-                            # DB 직접 삭제 시도 (API 백업 모드)
                             import sqlite3
                             import os
                             db_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "history.db")
@@ -418,21 +567,19 @@ elif menu == "Admin History":
                             cursor.execute("DELETE FROM scan_history WHERE id = ?", (del_id,))
                             conn.commit()
                             conn.close()
-                            st.toast(f"ID {del_id} 이력이 로컬 DB에서 직접 삭제되었습니다.")
+                            st.toast(f"로컬 DB에서 이력 ID {del_id} 삭제 완료")
                             st.rerun()
                     except Exception as e:
-                        st.error(f"이력 삭제에 실패했습니다: {str(e)}")
+                        st.error(f"삭제 오류: {str(e)}")
                         
         with c_clear:
-            st.markdown("<div style='height:28px;'></div>", unsafe_allow_html=True)
-            if st.button("🚨 전체 분석 이력 초기화", use_container_width=True):
+            if st.button("전체 분석 이력 초기화", use_container_width=True):
                 try:
                     res = requests.post(f"{API_URL}/history/clear")
                     if res.status_code == 200:
-                        st.toast("모든 분석 이력이 초기화되었습니다.")
+                        st.toast("모든 분석 이력 초기화 완료")
                         st.rerun()
                     else:
-                        # DB 직접 초기화
                         import sqlite3
                         import os
                         db_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "history.db")
@@ -441,9 +588,9 @@ elif menu == "Admin History":
                         cursor.execute("DELETE FROM scan_history")
                         conn.commit()
                         conn.close()
-                        st.toast("로컬 DB의 전체 분석 이력이 직접 초기화되었습니다.")
+                        st.toast("로컬 DB 전체 이력 초기화 완료")
                         st.rerun()
                 except Exception as e:
-                    st.error(f"이력 전체 초기화에 실패했습니다: {str(e)}")
+                    st.error(f"초기화 오류: {str(e)}")
     else:
-        st.info("💡 누적된 위협 탐지 이력이 아직 존재하지 않습니다. 첫 정적 분석을 수행해 보세요!")
+        st.info("누적된 위협 탐지 이력이 없습니다.")
