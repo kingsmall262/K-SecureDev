@@ -92,13 +92,27 @@ def analyze_code_clone(filename: str, source_code: str) -> dict:
         risk_score = max(50, min(100, int(similarity * 100)))
 
     if not vulnerable_clone_found:
+        ext = os.path.splitext(filename)[1].lower()
+        lang_label = "cpp"
+        if ext == ".py":
+            lang_label = "python"
+        elif ext == ".php":
+            lang_label = "php"
+            
+        ai_patch_guide = f"""### 🤖 K-SecureDev 보안 패치 가이드
+보안성 양호: 내부 비즈니스 로직에 보안 결함이 존재하지 않습니다.
+
+```{lang_label}
+{source_code}
+```
+"""
         return {
             "filename": filename,
             "vulnerable_clone_found": False,
             "matched_cve": "N/A",
             "risk_score": risk_score,
             "vulnerability_details": vuln_details,
-            "ai_patch_guide": "보안성 양호: 내부 비즈니스 로직에 보안 결함이 존재하지 않습니다."
+            "ai_patch_guide": ai_patch_guide
         }
 
     api_key = os.getenv("GEMINI_API_KEY", "YOUR_API_KEY_HERE")
@@ -126,18 +140,11 @@ def analyze_code_clone(filename: str, source_code: str) -> dict:
     prompt = "\n".join(prompt_lines)
 
     try:
-        model = genai.GenerativeModel("gemini-2.0-flash")
+        model = genai.GenerativeModel("gemini-flash-latest")
         response = model.generate_content(prompt)
         ai_patch_guide = response.text
     except Exception as e:
-        # API 오류 시 로컬에서 정답(Reference) 코드를 읽어와 동적으로 패치 가이드 구성
-        ref_path = os.path.join("juliet_samples", "secure_" + filename)
-        if os.path.exists(ref_path):
-            with open(ref_path, "r", encoding="utf-8") as f:
-                ref_code = f.read()
-        else:
-            ref_code = source_code
-
+        # API 오류 시 정답(Reference) 코드를 불러오지 않고 원본 코드를 보존하여 솔직한 검증값 유도
         ext = os.path.splitext(filename)[1].lower()
         lang_label = "cpp"
         if ext == ".py":
@@ -147,12 +154,12 @@ def analyze_code_clone(filename: str, source_code: str) -> dict:
 
         fallback_lines = [
             "### 🤖 K-SecureDev 보안 패치 가이드 (로컬 대체 모드)",
-            "Gemini API 프록시 통신 제한으로 인해 로컬 표준 보안 규격 코드를 제안합니다.",
+            "Gemini API 호출 실패로 인해 원본 소스코드가 보존되었습니다.",
             "",
             f"```{lang_label}",
-            ref_code,
+            source_code,
             "```",
-            f"* **보안 패치 적용 완료**: {target_line}번 라인의 위험 요소를 교정했습니다.",
+            f"* **⚠️ 경고**: API 호출 한도 초과로 취약점 교정이 가동되지 않았습니다.",
             f"⚠️ 로컬 엔진 안내: API 호출 제한됨 ({str(e)})"
         ]
         ai_patch_guide = "\n".join(fallback_lines)

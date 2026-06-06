@@ -76,9 +76,31 @@ def calculate_codebleu(ref_code, patch_code, filename):
         result = calc_codebleu([ref_code], [patch_code], lang=lang)
         return result.get('codebleu', 0.88)
     except Exception:
+        # Fallback: codebleu 컴파일/설치 실패 시 정규화 라인 비교 유사도 계산 (주석 제거 후 비교)
         from difflib import SequenceMatcher
-        ref_lines = [line.strip() for line in ref_code.splitlines() if line.strip()]
-        patch_lines = [line.strip() for line in patch_code.splitlines() if line.strip()]
+        
+        def clean_code(code, ext):
+            lines = []
+            for line in code.splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                # 주석 라인 스킵
+                if ext in ['.c', '.php'] and line.startswith('//'):
+                    continue
+                if ext == '.py' and line.startswith('#'):
+                    continue
+                # 인라인 주석 제거
+                if ext in ['.c', '.php'] and '//' in line:
+                    line = line.split('//')[0].strip()
+                if ext == '.py' and '#' in line:
+                    line = line.split('#')[0].strip()
+                if line:
+                    lines.append(line)
+            return lines
+
+        ref_lines = clean_code(ref_code, ext)
+        patch_lines = clean_code(patch_code, ext)
         sm = SequenceMatcher(None, ref_lines, patch_lines)
         return max(0.0, min(1.0, sm.ratio()))
 

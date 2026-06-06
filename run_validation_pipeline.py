@@ -7,6 +7,7 @@ import json
 import requests
 import subprocess
 import sys
+import time  # [추가] 429 에러 방지 및 재시도를 위한 시간 모듈
 
 # .env 파일이 존재하는 경우 로컬 환경 변수로 수동 로드 (Gemini API 인증용)
 if os.path.exists(".env"):
@@ -42,8 +43,8 @@ def get_test_samples():
     if os.path.exists(JULIET_SAMPLE_DIR):
         # secure_ 로 시작하지 않는 분석 대상 취약 코드 파일들 추출
         file_list = [f for f in os.listdir(JULIET_SAMPLE_DIR) if not f.startswith("secure_") and f.endswith(('.c', '.php', '.py'))]
-        # 최대 50개 샘플 선택
-        file_list = sorted(file_list)[:50]
+        # 최대 3개 샘플 선택 (API 한도 대응)
+        file_list = sorted(file_list)[:3]
         
         for f in file_list:
             # 파일 이름 구조 분석 (예: CWE119_buffer_overflow_1.c)
@@ -85,10 +86,31 @@ def calculate_codebleu(ref_code, patch_code, filename):
         result = calc_codebleu([ref_code], [patch_code], lang=lang)
         return result.get('codebleu', 0.88)
     except Exception:
-        # Fallback: codebleu 컴파일/설치 실패 시 정규화 라인 비교 유사도 계산
+        # Fallback: codebleu 컴파일/설치 실패 시 정규화 라인 비교 유사도 계산 (주석 제거 후 비교)
         from difflib import SequenceMatcher
-        ref_lines = [line.strip() for line in ref_code.splitlines() if line.strip()]
-        patch_lines = [line.strip() for line in patch_code.splitlines() if line.strip()]
+        
+        def clean_code(code, ext):
+            lines = []
+            for line in code.splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                # 주석 라인 스킵
+                if ext in ['.c', '.php'] and line.startswith('//'):
+                    continue
+                if ext == '.py' and line.startswith('#'):
+                    continue
+                # 인라인 주석 제거
+                if ext in ['.c', '.php'] and '//' in line:
+                    line = line.split('//')[0].strip()
+                if ext == '.py' and '#' in line:
+                    line = line.split('#')[0].strip()
+                if line:
+                    lines.append(line)
+            return lines
+
+        ref_lines = clean_code(ref_code, ext)
+        patch_lines = clean_code(patch_code, ext)
         
         sm = SequenceMatcher(None, ref_lines, patch_lines)
         return max(0.0, min(1.0, sm.ratio()))
@@ -176,6 +198,10 @@ def main():
     for idx, sample in enumerate(samples, 1):
         print(f"[{idx:02d}/{total_samples:02d}] {sample['filename']} 분석 및 패치 수행 중...")
         
+        # [수정] 연속 호출로 인한 무차별 429 차단을 막기 위한 기본 대기 시간 (기본 4초)
+        # 구글 무료 API 한도(1분당 약 15회)에 맞추기 위해 안전하게 4초씩 쉬어갑니다.
+        time.sleep(4)
+        
         try:
             with open(sample['vuln_path'], 'r', encoding='utf-8') as f:
                 vuln_code = f.read()
@@ -190,30 +216,46 @@ def main():
         risk_score_detected = 0
         vulnerable_found = False
         
-        try:
-            # FastAPI 관제 API 게이트웨이 호출 시도
-            response = requests.post(
-                API_URL, 
-                json={"filename": sample['filename'], "source_code": vuln_code},
-                timeout=15
-            )
-            if response.status_code == 200:
-                resp_json = response.json()
-                patch_guide = resp_json.get("ai_patch_guide", "")
-                risk_score_detected = resp_json.get("risk_score", 0)
-                vulnerable_found = resp_json.get("vulnerable_clone_found", False)
-            else:
-                raise requests.RequestException("API Server error status")
-        except (requests.exceptions.RequestException, Exception) as e:
-            # API 서버가 다운되었거나 오류가 발생한 경우 로컬 엔진으로 폴백
-            if analyze_code_clone is not None:
-                local_result = analyze_code_clone(sample['filename'], vuln_code)
-                patch_guide = local_result.get("ai_patch_guide", "")
-                risk_score_detected = local_result.get("risk_score", 0)
-                vulnerable_found = local_result.get("vulnerable_clone_found", False)
-            else:
-                print(f"  [!] [에러] API 호출 실패 및 로컬 엔진 미설치: {e}")
-                continue
+        # [수정] 429 에러 대응 전용 재시도 백오프 루프 (최대 3회 재시도)
+        retry_count = 3
+        for attempt in range(retry_count):
+            try:
+                # FastAPI 관제 API 게이트웨이 호출 시도
+                response = requests.post(
+                    API_URL, 
+                    json={"filename": sample['filename'], "source_code": vuln_code},
+                    timeout=15
+                )
+                
+                # 만약 API 서버 혹은 연동된 LLM에서 429 제한이 터졌을 경우
+                if response.status_code == 429:
+                    wait_time = (attempt + 1) * 15  # 15초, 30초, 45초 순으로 대기 시간 연장
+                    print(f"  [!] 429 Too Many Requests 감지! {wait_time}초 후 다시 시도합니다... ({attempt+1}/{retry_count})")
+                    time.sleep(wait_time)
+                    continue  # 다음 루프(재시도)로 이동
+                
+                if response.status_code == 200:
+                    resp_json = response.json()
+                    patch_guide = resp_json.get("ai_patch_guide", "")
+                    risk_score_detected = resp_json.get("risk_score", 0)
+                    vulnerable_found = resp_json.get("vulnerable_clone_found", False)
+                    break  # 성공했으므로 재시도 루프 탈출
+                else:
+                    raise requests.RequestException("API Server error status")
+            except (requests.exceptions.RequestException, Exception) as e:
+                # 마지막 시도였거나 로컬 엔진 폴백이 필요할 때
+                if attempt == retry_count - 1:
+                    if analyze_code_clone is not None:
+                        local_result = analyze_code_clone(sample['filename'], vuln_code)
+                        patch_guide = local_result.get("ai_patch_guide", "")
+                        risk_score_detected = local_result.get("risk_score", 0)
+                        vulnerable_found = local_result.get("vulnerable_clone_found", False)
+                    else:
+                        print(f"  [!] [에러] API 호출 실패 및 로컬 엔진 미설치: {e}")
+                        break
+                else:
+                    # 일시적인 통신 장애일 경우 잠시 대기 후 재시도
+                    time.sleep(5)
 
         # 패치 코드 추출 및 임시 저장
         patch_code = extract_safe_clone(patch_guide)
