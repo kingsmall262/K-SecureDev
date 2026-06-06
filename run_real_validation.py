@@ -90,14 +90,17 @@ def run_snyk_scan(file_path):
     try:
         result = subprocess.run(
             ["snyk", "code", "test", "--json", file_path],
-            capture_output=True, text=True, shell=True
+            capture_output=True, shell=True
         )
         
+        stdout = result.stdout.decode('utf-8', errors='replace') if result.stdout else ""
+        stderr = result.stderr.decode('utf-8', errors='replace') if result.stderr else ""
+        
         # Snyk CLI 미연동/미로그인 감지
-        if not result.stdout or "snyk auth" in result.stdout or "not found" in result.stderr.lower():
+        if not stdout or "snyk auth" in stdout or "not found" in stderr.lower():
             return -1
             
-        output_json = json.loads(result.stdout)
+        output_json = json.loads(stdout)
         critical_count = 0
         
         runs = output_json.get("runs", [])
