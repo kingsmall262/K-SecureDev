@@ -12,3 +12,6 @@ venv/
 *.db
 *.bin
 .env
+juliet_samples/
+temp_patched/
+k_securedev_final_report.csv
