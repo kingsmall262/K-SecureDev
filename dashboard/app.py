@@ -288,11 +288,79 @@ elif menu == "Code Vulnerability Patch":
 
     st.markdown("---")
     
+    # 시연용 템플릿 코드 정의
+    TEMPLATES = {
+        "선택 안함 (직접 입력)": "",
+        "CWE-119 Buffer Overflow Risk (C)": """#include <stdio.h>
+#include <string.h>
+
+void bad_func(char *src) {
+    char buffer[16];
+    // Vulnerable: unsafe strcpy may overflow buffer
+    strcpy(buffer, src);
+}
+
+int main(int argc, char **argv) {
+    if (argc > 1) {
+        bad_func(argv[1]);
+    }
+    return 0;
+}""",
+        "CWE-89 SQL Injection (PHP)": """<?php
+$conn = mysqli_connect("localhost", "db_user", "db_pass", "db_name");
+$user_id = $_GET['id'];
+
+// Vulnerable: raw user input concatenated directly into query
+$query = "SELECT * FROM users WHERE id = " . $user_id;
+$result = mysqli_query($conn, $query);
+?>""",
+        "CWE-79 Cross-Site Scripting (PHP)": """<?php
+$user_input = $_POST['username'];
+
+// Vulnerable: unescaped user input echoed back to browser
+echo "<div class='profile'><h2>Welcome, " . $user_input . "</h2></div>";
+?>""",
+        "CWE-22 Path Traversal (Python)": """import os
+
+def read_user_file(file_name):
+    # Vulnerable: directly joining user input allows directory traversal
+    target_path = os.path.join("/var/www/data", file_name)
+    with open(target_path, "r") as f:
+        return f.read()""",
+        "CWE-78 OS Command Injection (Python)": """import os
+
+def query_host(ip_address):
+    # Vulnerable: shell=True with unvalidated string input
+    cmd = "nslookup " + ip_address
+    os.system(cmd)"""
+    }
+
     c_left, c_right = st.columns(2)
     with c_left:
         st.subheader("진단 대상 소스코드")
-        default_code = "$user_input = $_GET['id'];\n$query = \"SELECT * FROM users WHERE id = \" . $user_input;\n$result = mysqli_query($conn, $query);"
-        code_data = st.text_area("C / PHP 소스코드 입력 피드", value=default_code, height=220, label_visibility="collapsed")
+        
+        # 세션 상태 변수 초기화
+        if "code_input_value" not in st.session_state:
+            st.session_state["code_input_value"] = "$user_input = $_GET['id'];\n$query = \"SELECT * FROM users WHERE id = \" . $user_input;\n$result = mysqli_query($conn, $query);"
+            st.session_state["prev_template"] = "선택 안함 (직접 입력)"
+
+        # 템플릿 선택 드롭다운
+        selected_template = st.selectbox(
+            "시연용 취약점 예시 코드 템플릿 선택",
+            list(TEMPLATES.keys()),
+            index=0
+        )
+
+        # 템플릿 선택이 이전과 달라졌을 경우 텍스트 업데이트
+        if selected_template != st.session_state["prev_template"]:
+            st.session_state["prev_template"] = selected_template
+            if selected_template != "선택 안함 (직접 입력)":
+                st.session_state["code_input_value"] = TEMPLATES[selected_template]
+                st.rerun()
+                
+        code_data = st.text_area("C / PHP / Python 소스코드 입력 피드", value=st.session_state["code_input_value"], height=220, label_visibility="collapsed")
+        st.session_state["code_input_value"] = code_data
+        
         btn_scan = st.button("정적 분석 및 Safe-Clone 생성 요청", type="primary", use_container_width=True)
 
     with c_right:
@@ -301,7 +369,13 @@ elif menu == "Code Vulnerability Patch":
             with st.spinner("Joern CPG 그래프 컴파일 및 취약 경로 대조 연산 중..."):
                 try:
                     is_c = "strcpy" in code_data or "char buffer" in code_data or "main(" in code_data
-                    target_filename = "vulnerable.c" if is_c else "auth.php"
+                    is_python = "import os" in code_data or "def " in code_data or "input(" in code_data
+                    if is_c:
+                        target_filename = "vulnerable.c"
+                    elif is_python:
+                        target_filename = "vulnerable.py"
+                    else:
+                        target_filename = "auth.php"
                     
                     res = requests.post(f"{API_URL}/code-analysis", json={"filename": target_filename, "source_code": code_data})
                     if res.status_code == 200:

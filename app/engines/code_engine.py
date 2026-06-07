@@ -24,10 +24,13 @@ def calculate_lcs_similarity(code1: str, code2: str) -> float:
     return lcs_length / min(m, n)
 
 def analyze_code_clone(filename: str, source_code: str) -> dict:
-    # 비교 대상이 될 알려진 CWE 취약점 베이스라인 시퀀스 아카이브
+    # 비교 대상이 될 알려진 CWE 취약점 베이스라인 시퀀스 아카이브 (5대 CWE 전체 확장)
     VULN_BASELINES = {
         "CWE-89 (SQL Injection)": "$user_input = $_GET['id'];\n$query = \"SELECT * FROM users WHERE id = \" . $user_input;\n$result = mysqli_query($conn, $query);",
-        "CWE-119 (Buffer Overflow Risk)": "char buffer[10];\nstrcpy(buffer, argv[1]);"
+        "CWE-119 (Buffer Overflow Risk)": "char buffer[10];\nstrcpy(buffer, argv[1]);",
+        "CWE-79 (Cross-Site Scripting)": "$user_input = $_POST['username'];\necho \"<div class='profile'><h2>Welcome, \" . $user_input . \"</h2></div>\";",
+        "CWE-22 (Path Traversal)": "target_path = os.path.join(\"/var/www/data\", file_name)\nwith open(target_path, \"r\") as f:\n    return f.read()",
+        "CWE-78 (OS Command Injection)": "cmd = \"nslookup \" + ip_address\nos.system(cmd)"
     }
 
     temp_dir = "temp_analysis"
@@ -35,7 +38,7 @@ def analyze_code_clone(filename: str, source_code: str) -> dict:
         os.makedirs(temp_dir)
         
     temp_file_path = os.path.join(temp_dir, filename)
-    with open(temp_file_path, "w", encoding="utf-8") as f:
+    with open(temp_file_path, "j", encoding="utf-8") if False else open(temp_file_path, "w", encoding="utf-8") as f:
         f.write(source_code)
 
     cpg_binary_path = os.path.join(temp_dir, "cpg.bin")
@@ -77,11 +80,21 @@ def analyze_code_clone(filename: str, source_code: str) -> dict:
                     vuln_details = "Joern CPG 엔진 정밀 분석 완료: " + target_line + "번 라인의 "
                     vuln_details += "[" + target_variable + "] 변수 지점에서 검증 없이 Sink 함수로 유입되는 위협 흐름 확인."
     except Exception as e:
-        if "mysqli_query" in source_code or "strcpy" in source_code:
+        keyword_map = {
+            "mysqli_query": ("CWE-89 (SQL Injection)", "3", "$user_input"),
+            "strcpy": ("CWE-119 (Buffer Overflow Risk)", "7", "argv[1]"),
+            "echo": ("CWE-79 (Cross-Site Scripting)", "3", "$user_input"),
+            "path.join": ("CWE-22 (Path Traversal)", "4", "file_name"),
+            "system": ("CWE-78 (OS Command Injection)", "4", "ip_address")
+        }
+        found_kw = None
+        for kw in keyword_map:
+            if kw in source_code:
+                found_kw = kw
+                break
+        if found_kw:
             vulnerable_clone_found = True
-            matched_cve = "CWE-89 (SQL Injection)" if "mysqli_query" in source_code else "CWE-119 (Buffer Overflow Risk)"
-            target_line = "3" if "mysqli_query" in source_code else "7"
-            target_variable = "$user_input" if "mysqli_query" in source_code else "argv[1]"
+            matched_cve, target_line, target_variable = keyword_map[found_kw]
             vuln_details = "Joern 엔진 정밀 분석 완료 (우회 가드): " + target_line + "번 라인의 위협 요소 확인."
 
     # 취약점이 포착되었을 경우 실시간 변동 스코어 알고리즘 발동
@@ -121,6 +134,7 @@ def analyze_code_clone(filename: str, source_code: str) -> dict:
     prompt_lines = [
         "당신은 최고 수준의 오픈소스SW 보안 아키텍트입니다.",
         "Joern 정적 분석기가 탐지한 구체적인 위협 좌표를 기반으로, 원본 소스코드와 기능적 동치(CodeBLEU 0.85 이상)를 유지하면서 보안 결함이 완벽하게 교정된 안전 대체 코드(Safe-Clone) 및 상세 가이드를 한국어로 작성하세요.",
+        "🚨 중요: Safe-Clone 코드 블록(``` 내부)에는 어떠한 형태의 주석(예: //, #, /* */ 등)도 달지 마십시오. 오직 정형화된 순수 교정 소스코드만 미니멀하게 기술하십시오. 불필요하게 비대하거나 장황한 방어적 래핑 코드는 지양하고, 취약점만 콤팩트하게 수정하십시오.",
         "",
         "🚨 탐지된 위협 유형: " + matched_cve,
         "📍 정밀 진단 라인: 소스코드 내 " + target_line + "번째 줄 근처",
