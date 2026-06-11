@@ -122,7 +122,7 @@ def analyze_code_clone(filename: str, source_code: str) -> dict:
 STATUS: [TRUE 또는 FALSE] | CWE: [CWE 번호 및 취약점명] | SCORE: [0~100 사이의 위험도 점수] | DETAILS: [탐지된 보안 약점의 핵심 설명]
 """
             model = genai.GenerativeModel("gemini-flash-latest")
-            diag_response = model.generate_content(ai_diag_prompt, request_options={"timeout": 4.0})
+            diag_response = model.generate_content(ai_diag_prompt, request_options={"timeout": 12.0})
             diag_text = diag_response.text.strip()
             print(f"[AI DIAGNOSTIC RAW OUTPUT] {diag_text}", flush=True)
             
@@ -219,7 +219,7 @@ STATUS: [TRUE 또는 FALSE] | CWE: [CWE 번호 및 취약점명] | SCORE: [0~100
 
     try:
         model = genai.GenerativeModel("gemini-flash-latest")
-        response = model.generate_content(prompt, request_options={"timeout": 6.0})
+        response = model.generate_content(prompt, request_options={"timeout": 25.0})
         ai_patch_guide = response.text
     except Exception as e:
         # API 오류 시 정답(Reference) 코드를 불러오지 않고 원본 코드를 보존하여 솔직한 검증값 유도
