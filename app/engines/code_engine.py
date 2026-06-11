@@ -1,6 +1,20 @@
 import os
 import subprocess
 import google.generativeai as genai
+import time
+
+def generate_content_with_retry(model, prompt, request_options=None, max_retries=3, initial_delay=5):
+    delay = initial_delay
+    for attempt in range(max_retries):
+        try:
+            return model.generate_content(prompt, request_options=request_options)
+        except Exception as e:
+            if attempt == max_retries - 1:
+                raise e
+            print(f"[Gemini API Retry] Attempt {attempt + 1} failed: {e}. Retrying in {delay} seconds...", flush=True)
+            time.sleep(delay)
+            delay *= 2
+
 
 def calculate_lcs_similarity(code1: str, code2: str) -> float:
     # 제안서 섹션 4.2 소스코드에 명시된 라인별 트리밍 및 정규화 메커니즘을 이식합니다.
@@ -121,8 +135,8 @@ def analyze_code_clone(filename: str, source_code: str) -> dict:
 반드시 아래 규격 한 줄로만 대답하세요 (잡담이나 다른 설명은 절대 추가하지 마십시오):
 STATUS: [TRUE 또는 FALSE] | CWE: [CWE 번호 및 취약점명] | SCORE: [0~100 사이의 위험도 점수] | DETAILS: [탐지된 보안 약점의 핵심 설명]
 """
-            model = genai.GenerativeModel("gemini-flash-latest")
-            diag_response = model.generate_content(ai_diag_prompt, request_options={"timeout": 12.0})
+            model = genai.GenerativeModel("gemini-2.5-flash")
+            diag_response = generate_content_with_retry(model, ai_diag_prompt, request_options={"timeout": 30.0})
             diag_text = diag_response.text.strip()
             print(f"[AI DIAGNOSTIC RAW OUTPUT] {diag_text}", flush=True)
             
@@ -218,8 +232,8 @@ STATUS: [TRUE 또는 FALSE] | CWE: [CWE 번호 및 취약점명] | SCORE: [0~100
     prompt = "\n".join(prompt_lines)
 
     try:
-        model = genai.GenerativeModel("gemini-flash-latest")
-        response = model.generate_content(prompt, request_options={"timeout": 25.0})
+        model = genai.GenerativeModel("gemini-2.5-flash")
+        response = generate_content_with_retry(model, prompt, request_options={"timeout": 60.0})
         ai_patch_guide = response.text
     except Exception as e:
         # API 오류 시 정답(Reference) 코드를 불러오지 않고 원본 코드를 보존하여 솔직한 검증값 유도

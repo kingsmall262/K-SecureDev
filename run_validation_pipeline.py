@@ -43,14 +43,8 @@ def get_test_samples():
     if os.path.exists(JULIET_SAMPLE_DIR):
         # secure_ 로 시작하지 않는 분석 대상 취약 코드 파일들 추출
         file_list = [f for f in os.listdir(JULIET_SAMPLE_DIR) if not f.startswith("secure_") and f.endswith(('.c', '.php', '.py'))]
-        # 5대 CWE 전체가 고루 검증되도록 각 패턴별로 1개씩 총 5개 파일 선택
-        cwe_patterns = ["CWE119", "CWE89", "CWE79", "CWE22", "CWE78"]
-        selected_files = []
-        for pat in cwe_patterns:
-            matches = [f for f in file_list if pat in f]
-            if matches:
-                selected_files.append(sorted(matches)[0])
-        file_list = selected_files
+        # 전체 50개 샘플을 대상으로 검증 수행
+        file_list = sorted(file_list)[:50]
         
         for f in file_list:
             # 파일 이름 구조 분석 (예: CWE119_buffer_overflow_1.c)
@@ -204,9 +198,9 @@ def main():
     for idx, sample in enumerate(samples, 1):
         print(f"[{idx:02d}/{total_samples:02d}] {sample['filename']} 분석 및 패치 수행 중...")
         
-        # [수정] 연속 호출로 인한 무차별 429 차단을 막기 위한 기본 대기 시간 (기본 4초)
-        # 구글 무료 API 한도(1분당 약 15회)에 맞추기 위해 안전하게 4초씩 쉬어갑니다.
-        time.sleep(4)
+        # [수정] 연속 호출로 인한 무차별 429 차단을 막기 위한 기본 대기 시간 (기본 5초)
+        # 구글 무료 API 한도(1분당 약 15회)에 맞추기 위해 안전하게 5초씩 쉬어갑니다.
+        time.sleep(5)
         
         try:
             with open(sample['vuln_path'], 'r', encoding='utf-8') as f:
@@ -230,12 +224,12 @@ def main():
                 response = requests.post(
                     API_URL, 
                     json={"filename": sample['filename'], "source_code": vuln_code},
-                    timeout=15
+                    timeout=90
                 )
                 
                 # 만약 API 서버 혹은 연동된 LLM에서 429 제한이 터졌을 경우
                 if response.status_code == 429:
-                    wait_time = (attempt + 1) * 15  # 15초, 30초, 45초 순으로 대기 시간 연장
+                    wait_time = (attempt + 1) * 30  # 30초, 60초, 90초 순으로 대기 시간 연장
                     print(f"  [!] 429 Too Many Requests 감지! {wait_time}초 후 다시 시도합니다... ({attempt+1}/{retry_count})")
                     time.sleep(wait_time)
                     continue  # 다음 루프(재시도)로 이동

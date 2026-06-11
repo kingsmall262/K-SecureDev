@@ -5,6 +5,7 @@ import json
 import requests
 import subprocess
 import sys
+import time
 
 # .env 파일이 존재하는 경우 로컬 환경 변수로 수동 로드 (Gemini API 인증용)
 if os.path.exists(".env"):
@@ -182,6 +183,9 @@ def main():
     for idx, sample in enumerate(samples, 1):
         print(f"[{idx:02d}/{total_samples:02d}] {sample['filename']} 분석 및 패치 수행 중...")
         
+        # 연속 호출로 인한 API 한도 초과(429/504) 방지를 위한 대기 시간 추가
+        time.sleep(5)
+        
         try:
             with open(sample['vuln_path'], 'r', encoding='utf-8') as f:
                 vuln_code = f.read()
@@ -199,7 +203,7 @@ def main():
             response = requests.post(
                 API_URL, 
                 json={"filename": sample['filename'], "source_code": vuln_code},
-                timeout=15
+                timeout=90
             )
             if response.status_code == 200:
                 resp_json = response.json()
