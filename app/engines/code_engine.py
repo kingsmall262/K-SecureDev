@@ -105,6 +105,47 @@ def analyze_code_clone(filename: str, source_code: str) -> dict:
         risk_score = max(50, min(100, int(similarity * 100)))
 
     if not vulnerable_clone_found:
+        # CPG 탐지를 벗어난 코드에 대해 Gemini 기반의 실시간 정밀 진단 질의 기동
+        try:
+            api_key = os.getenv("GEMINI_API_KEY", "YOUR_API_KEY_HERE")
+            genai.configure(api_key=api_key)
+            
+            ai_diag_prompt = f"""당신은 전문 소프트웨어 보안 분석가입니다.
+제시된 소스코드에 치명적인 보안 취약점(예: 하드코딩된 자격증명, 취약한 암호알고리즘, 권한 검증 누락 등)이 존재하는지 정밀 진단하세요.
+취약점이 존재한다면 STATUS를 TRUE로 설정하고, 완전히 안전하고 결함이 없다면 FALSE로 설정하세요.
+
+[소스코드]
+{source_code}
+
+[출력 형식]
+반드시 아래 규격 한 줄로만 대답하세요 (잡담이나 다른 설명은 절대 추가하지 마십시오):
+STATUS: [TRUE 또는 FALSE] | CWE: [CWE 번호 및 취약점명] | SCORE: [0~100 사이의 위험도 점수] | DETAILS: [탐지된 보안 약점의 핵심 설명]
+"""
+            model = genai.GenerativeModel("gemini-flash-latest")
+            diag_response = model.generate_content(ai_diag_prompt)
+            diag_text = diag_response.text.strip()
+            
+            if "|" in diag_text and "STATUS:" in diag_text:
+                parts = {}
+                for item in diag_text.split("|"):
+                    if ":" in item:
+                        k, v = item.split(":", 1)
+                        parts[k.strip()] = v.strip()
+                
+                ai_status = parts.get("STATUS", "FALSE")
+                if ai_status == "TRUE":
+                    vulnerable_clone_found = True
+                    matched_cve = parts.get("CWE", "CWE-Unknown")
+                    try:
+                        risk_score = int(parts.get("SCORE", "50"))
+                    except:
+                        risk_score = 50
+                    vuln_details = "[AI 정밀 진단 결과] " + parts.get("DETAILS", "잠재적 보안 결함 검출.")
+        except Exception as e:
+            # API 장애나 호출 제한 시 기존 디폴트 안전 모드로 복귀
+            pass
+
+    if not vulnerable_clone_found:
         ext = os.path.splitext(filename)[1].lower()
         lang_label = "cpp"
         if ext == ".py":
