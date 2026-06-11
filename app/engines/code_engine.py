@@ -56,14 +56,14 @@ def analyze_code_clone(filename: str, source_code: str) -> dict:
 
     try:
         parse_cmd = ["joern-parse", temp_dir, "--output", cpg_binary_path]
-        subprocess.run(parse_cmd, check=True, capture_output=True, text=True)
+        subprocess.run(parse_cmd, check=True, capture_output=True, text=True, timeout=12)
         
         script_path = os.path.join("app", "engines", "query.scala")
         joern_cmd = [
             "joern", "--script", script_path, 
             "--params", "cpgPath=" + cpg_binary_path + ",outPath=" + result_report_path
         ]
-        subprocess.run(joern_cmd, check=True, capture_output=True, text=True)
+        subprocess.run(joern_cmd, check=True, capture_output=True, text=True, timeout=12)
 
         if os.path.exists(result_report_path):
             with open(result_report_path, "r", encoding="utf-8") as f:
